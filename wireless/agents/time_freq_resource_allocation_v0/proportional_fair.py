@@ -25,7 +25,6 @@ class ProportionalFairAgent(RandomAgent):
         s = np.reshape(state[num_ues:num_ues * (1 + max_pkts)], (num_ues, max_pkts))  # Sizes in bits of packets in UEs' buffers
         buffer_size_per_ue = np.sum(s, axis=1)
 
-        throughput = state[len(state) - num_ues:len(state)]
         e = np.reshape(state[num_ues * (1 + max_pkts):num_ues * (1 + 2 * max_pkts)], (num_ues, max_pkts))  # Packet ages in TTIs
         o = np.max(e, axis=1)  # Age of oldest packet for each UE
 
@@ -41,12 +40,12 @@ class ProportionalFairAgent(RandomAgent):
         b[qi == 1] = 30
         b[qi == 0] = 300
 
-        return o, cqi, b, buffer_size_per_ue, throughput
+        return o, cqi, b, buffer_size_per_ue
 
     def act(self, state, reward, done):
-        o, cqi, b, buffer_size_per_ue, throughput = self.parse_state(state, self.K, self.L)
+        o, cqi, b, buffer_size_per_ue = self.parse_state(state, self.K, self.L)
 
-        priorities = self._calculate_priorities(cqi, o, b, buffer_size_per_ue, throughput)
+        priorities = self._calculate_priorities(cqi, o, b, buffer_size_per_ue)
 
         action = np.argmax(priorities)
         self.n[action] += 1
@@ -73,6 +72,8 @@ class ProportionalFairChannelAwareAgent(ProportionalFairAgent):
 class Knapsackagent(ProportionalFairAgent):
     def __init__(self, action_space, n_ues, buffer_max_size):
         super().__init__(action_space, n_ues, buffer_max_size)
+        self.r = None
+        self.window = 25 * 10
 
     def _calculate_priorities(self, cqi, o, b, buffer_size_per_ue, throughput):
         # Normalized values
@@ -83,3 +84,28 @@ class Knapsackagent(ProportionalFairAgent):
         # tanh as ranking function for values
         priorities = 1 * np.tanh(k_cqi) + 1 * np.tanh(k_buffer) + 1 * np.tanh(k_age) + 1 * np.tanh(k_fairness)
         return priorities
+
+    def act(self, state, reward, done):
+        # reset the self.r
+        if self.t % self.window == 0:
+            self.r = np.zeros(shape=(self.K,), dtype=np.float32)
+
+        o, cqi, b, buffer_size_per_ue = self.parse_state(state, self.K, self.L)
+
+        priorities = self._calculate_priorities(cqi, o, b, buffer_size_per_ue, self.r)
+
+        self.buffer_size_moving_average(state)
+
+        action = np.argmax(priorities)
+        self.n[action] += 1
+
+        self.t += 1
+        return action
+
+    def buffer_size_moving_average(self, state):
+        s = np.reshape(state[self.K:self.K * (1 + self.L)],
+                       (self.K, self.L))  # Sizes in bits of packets in UEs' buffers
+        buffer_size_per_ue = np.sum(s, axis=1)
+        if self.t % 25 == 0 and self.t != 0:
+            self.r = (1 - 0.1) * self.r + buffer_size_per_ue * 0.1
+
