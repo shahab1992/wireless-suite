@@ -25,6 +25,7 @@ class ProportionalFairAgent(RandomAgent):
         s = np.reshape(state[num_ues:num_ues * (1 + max_pkts)], (num_ues, max_pkts))  # Sizes in bits of packets in UEs' buffers
         buffer_size_per_ue = np.sum(s, axis=1)
 
+        throughput = state[len(state) - num_ues:len(state)]
         e = np.reshape(state[num_ues * (1 + max_pkts):num_ues * (1 + 2 * max_pkts)], (num_ues, max_pkts))  # Packet ages in TTIs
         o = np.max(e, axis=1)  # Age of oldest packet for each UE
 
@@ -40,12 +41,12 @@ class ProportionalFairAgent(RandomAgent):
         b[qi == 1] = 30
         b[qi == 0] = 300
 
-        return o, cqi, b, buffer_size_per_ue
+        return o, cqi, b, buffer_size_per_ue, throughput
 
     def act(self, state, reward, done):
-        o, cqi, b, buffer_size_per_ue = self.parse_state(state, self.K, self.L)
+        o, cqi, b, buffer_size_per_ue, throughput = self.parse_state(state, self.K, self.L)
 
-        priorities = self._calculate_priorities(cqi, o, b, buffer_size_per_ue)
+        priorities = self._calculate_priorities(cqi, o, b, buffer_size_per_ue, throughput)
 
         action = np.argmax(priorities)
         self.n[action] += 1
@@ -66,4 +67,19 @@ class ProportionalFairChannelAwareAgent(ProportionalFairAgent):
         for i in range(16):
             se[cqi == i] = self.CQI2SE[i]
         priorities = (1 + o) / b * buffer_size_per_ue * se
+        return priorities
+
+
+class Knapsackagent(ProportionalFairAgent):
+    def __init__(self, action_space, n_ues, buffer_max_size):
+        super().__init__(action_space, n_ues, buffer_max_size)
+
+    def _calculate_priorities(self, cqi, o, b, buffer_size_per_ue, throughput):
+        # Normalized values
+        k_cqi = (cqi / 15)
+        k_buffer = (buffer_size_per_ue / (throughput + 1))
+        k_age = (o / b)
+        k_fairness = (1 / (1 + self.n))
+        # tanh as ranking function for values
+        priorities = 1 * np.tanh(k_cqi) + 1 * np.tanh(k_buffer) + 1 * np.tanh(k_age) + 1 * np.tanh(k_fairness)
         return priorities

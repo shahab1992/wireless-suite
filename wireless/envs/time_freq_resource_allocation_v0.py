@@ -39,6 +39,7 @@ class TimeFreqResourceAllocationV0(Env):
         self.max_pkt_size_bits = max_pkt_size_bits
         self.t_max = t_max
         self.tti_max = ceil(t_max/n_prbs)
+        self.window = self.Nf * 10  # Size of window for moving average
 
         self.bts_pos = [self.x_max_m / 2, self.y_max_m / 2]
         self.propagation_model = PropModel(self.f_carrier_mhz)
@@ -65,6 +66,7 @@ class TimeFreqResourceAllocationV0(Env):
         self.e = None  # Ages in TTIs of all packets in each UE's buffer
         self.qi = None
         self.p = 0
+        self.r = None
 
         # Internal state features
         self.t = 0  # Time step
@@ -82,6 +84,7 @@ class TimeFreqResourceAllocationV0(Env):
 
     def reset(self):
         self.cqi = np.zeros(shape=(self.K,), dtype=np.uint8)
+        self.r = np.zeros(shape=(self.K,), dtype=np.float32)
         self.s = np.zeros(shape=(self.K, self.L), dtype=np.uint32)
         self.e = np.zeros(shape=(self.K, self.L), dtype=np.uint32)
         self.qi = np.concatenate((np.repeat(np.array([[0, 0, 0, 1]]), self.K // 4, axis=0),
@@ -138,6 +141,9 @@ class TimeFreqResourceAllocationV0(Env):
 
         reward = 0
         self.t += 1  # Update time-step
+        # Reset the average UEs buffer size over a certain window
+        if self.t % self.window == 0:
+            self.r = np.zeros(shape=(self.K,), dtype=np.float32)
         self.p = self.t % self.Nf  # Update PRB counter
         if self.p == 0:
             reward = self._calculate_reward()
@@ -146,6 +152,7 @@ class TimeFreqResourceAllocationV0(Env):
             self._generate_traffic()
             self._move_ues()
             self._recalculate_rf()
+            self._compute_moving_average()
 
         self._update_state()
         done = bool(self.t >= self.t_max)
@@ -269,4 +276,12 @@ class TimeFreqResourceAllocationV0(Env):
                     assert 1 <= self.s[u, g] <= self.max_pkt_size_bits, f"Packet size {self.s[u, g]} out of range."
 
     def _update_state(self):
-        self.state = np.concatenate((self.cqi, self.s.flatten(), self.e.flatten(), self.qi.flatten(), [self.p]))
+        self.state = np.concatenate((self.cqi, self.s.flatten(), self.e.flatten(), self.qi.flatten(), [self.p], self.r))
+
+    def _compute_moving_average(self):
+        s = np.reshape(self.state[self.K:self.K * (1 + self.L)],(self.K, self.L))  # Sizes in bits of packets in UEs' buffers
+        buffer_size_per_ue = np.sum(s, axis=1)
+        # Moving average filter over buffer sizes
+        self.r = (1 - self.Nf/self.window) * self.r + buffer_size_per_ue * self.Nf/self.window
+
+

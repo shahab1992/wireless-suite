@@ -50,8 +50,8 @@ def main(_run):
                            eirp_dbm=_run.config['env']['eirp_dbm'], f_carrier_mhz=_run.config['env']['f_carrier_mhz'],
                            max_pkt_size_bits=_run.config['env']['max_pkt_size_bits'],
                            it=_run.config['env']['non_gbr_traffic_mean_interarrival_time_ttis'])  # Init environment
-            env.seed(seed=_run.config['seed'] + ep) 
-    
+            env.seed(seed=_run.config['seed'] + ep)
+
             # Init agent
             if ac["agent"]["agent_type"] == "random":
                 agent = RandomAgent(env.action_space)
@@ -64,6 +64,8 @@ def main(_run):
                 agent = ProportionalFairAgent(env.action_space, env.K, env.L)
             elif ac["agent"]["agent_type"] == "proportional fair channel aware":
                 agent = ProportionalFairChannelAwareAgent(env.action_space, env.K, env.L)
+            elif ac["agent"]["agent_type"] == "knapsack":
+                agent = Knapsackagent(env.action_space, env.K, env.L)
             else:
                 raise NotImplemented
                 
