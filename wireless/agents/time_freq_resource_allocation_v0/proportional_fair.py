@@ -106,6 +106,7 @@ class Knapsackagent(ProportionalFairAgent):
         s = np.reshape(state[self.K:self.K * (1 + self.L)],
                        (self.K, self.L))  # Sizes in bits of packets in UEs' buffers
         buffer_size_per_ue = np.sum(s, axis=1)
+        # Moving Average of buffer sizes
         if self.t % 25 == 0 and self.t != 0:
             self.r = (1 - 0.1) * self.r + buffer_size_per_ue * 0.1
 
