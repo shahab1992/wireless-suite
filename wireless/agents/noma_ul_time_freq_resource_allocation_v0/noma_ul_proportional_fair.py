@@ -50,7 +50,7 @@ class NomaULProportionalFairChannelAwareAgent(RandomAgent):
         return wsr
 
     def act(self, state, reward, done):
-        o, cqi, b, buffer_size_per_ue, throughput = ProportionalFairAgent.parse_state(state, self.K, self.L)
+        o, cqi, b, buffer_size_per_ue = ProportionalFairAgent.parse_state(state, self.K, self.L)
 
         p = state[-1]
 
